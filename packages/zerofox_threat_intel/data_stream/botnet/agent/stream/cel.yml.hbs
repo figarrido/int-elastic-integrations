@@ -1,0 +1,40 @@
+config_version: "2"
+interval: {{interval}}
+
+{{#if enable_request_tracer}}
+resource.tracer.filename: "../../logs/cel/http-request-trace-*.ndjson"
+resource.tracer.maxbackups: 5
+{{/if}}
+
+resource.url: {{url}}
+
+state:
+  url: {{url}}
+  username: {{zerofox_username}}
+  password: {{zerofox_api_token}}
+  initial_interval: {{initial_interval}}
+
+program: |
+  post_request(
+    state.url + "/auth/token/",
+    "application/json",
+    encode_json({
+      "username": state.username,
+      "password": state.password,
+    })
+  )
+    .do_request()
+    .as(response, bytes(response.Body).decode_json())
+    .as(
+      body,
+      get_request(
+        state.url + "/cti/botnet/?" + {
+          "listed_after": state.cursor.?last_execution_datetime.orValue(now() - duration("-" + state.initial_interval))
+        }.format_query()
+      ).with({
+          "Header": {
+            "Authorization": "Bearer " + body.access,
+          }
+        })
+        .do_request()
+    )

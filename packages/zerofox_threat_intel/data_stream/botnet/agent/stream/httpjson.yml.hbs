@@ -1,0 +1,84 @@
+config_version: "2"
+interval: {{interval}}
+
+{{#if enable_request_tracer}}
+request.tracer.filename: "../../logs/httpjson/http-request-trace-*.ndjson"
+request.tracer.maxbackups: 5
+{{/if}}
+
+request.method: "POST"
+
+{{#if url}}
+request.url: "{{url}}/auth/token/"
+{{/if}}
+
+{{#if http_client_timeout}}
+request.timeout: {{http_client_timeout}}
+{{/if}}
+
+request.body:
+  username: "{{zerofox_username}}"
+  password: "{{zerofox_api_token}}"
+
+chain:
+  - step:
+      replace: $.access
+      request.method: "GET"
+
+      {{#if enable_request_tracer}}
+      request.tracer.filename: "../../logs/httpjson/http-request-trace-*.ndjson"
+      request.tracer.maxbackups: 5
+      {{/if}}
+
+      {{#if url}}
+      request.url: "{{url}}/cti/botnet/"
+      {{/if}}
+
+      {{#if http_client_timeout}}
+      request.timeout: {{http_client_timeout}}
+      {{/if}}
+
+      request.transforms:
+        - set:
+            target: header.Authorization
+            value: 'Bearer [[ .parent_last_response.body.access ]]'
+        - set:
+            target: url.params.listed_after
+            {{!-- value: "[[ .cursor.last_execution_datetime ]]" --}}
+            value: '[[ formatDate (now (parseDuration "-{{initial_interval}}")) ]]'
+
+      response.split:
+        target: body.results
+  - while:
+      until: '[[ eq .last_response.body.next nil ]]'
+      replace: $.next
+      request.method: "GET"
+      request.url: $.next
+
+      {{#if enable_request_tracer}}
+      request.tracer.filename: "../../logs/httpjson/http-request-trace-*.ndjson"
+      request.tracer.maxbackups: 5
+      {{/if}}
+
+      {{#if http_client_timeout}}
+      request.timeout: {{http_client_timeout}}
+      {{/if}}
+
+      request.transforms:
+        - set:
+            target: header.Authorization
+            value: 'Bearer [[ .parent_last_response.body.access ]]'
+        - set:
+            target: url.params.debug
+            value: '[[ .last_response.body ]]'
+      response.split:
+        target: body.results
+
+{{!-- cursor:
+  last_execution_datetime:
+    value: "[[ formatDate now ]]" --}}
+
+{{#if processors.length}}
+processors:
+  {{processors}}
+{{/if}}
